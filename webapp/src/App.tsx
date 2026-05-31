@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import {
   Activity, AlertTriangle, BarChart3, BookOpen, CheckCircle2, Database, FileDown,
   Gauge, KeyRound, LayoutDashboard, ListChecks, Loader2, LogOut, RadioTower,
-  RefreshCw, Search, Settings, ShieldCheck, Signal, Smartphone, XCircle,
+  RefreshCw, Search, Settings, ShieldCheck, Signal, Smartphone, UserPlus, XCircle,
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -18,6 +18,8 @@ type ICCID = {
 }
 type Operation = { id: number; sim_card: string; cnpj: string; quantity: number; status: string; trigger_type: string; created_at: string; error_message?: string; easy2use_user_message?: string }
 type Approval = { id: number; sim_card: string; cnpj: string; subscriber_name: string; status: string; quantity: number; reason: string; created_at: string }
+type NextRun = { today: string; next_recharge_due_at?: string | null; iccids_due_count: number; actionable_iccids_count: number; next_recharge_iccids: ICCID[] }
+type UserForm = { name: string; email: string; password: string; role: Role; active: boolean }
 
 const API = import.meta.env.VITE_API_BASE_URL || ''
 const nav = [
@@ -110,18 +112,22 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
 
 function Dashboard({ setToast }: { setToast: (s: string) => void }) {
   const [data, setData] = useState<any>(null)
+  const [nextRun, setNextRun] = useState<NextRun | null>(null)
   const [live, setLive] = useState('desconectado')
   const load = () => request('/api/dashboard/summary').then(setData)
+  const loadNextRun = () => request<NextRun>('/automation/next-run').then(setNextRun)
+  const loadAll = () => Promise.all([load(), loadNextRun()])
   const syncSubscribers = async () => {
     setToast('Sincronizando assinantes...')
     const result = await request<any>('/sync/assinantes', { method: 'POST' })
-    await load()
+    await loadAll()
     setToast(`Sincronizacao concluida: ${result.saved || 0} ICCIDs salvos`)
   }
-  useEffect(() => { load(); const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`); ws.onopen = () => setLive('online'); ws.onclose = () => setLive('offline'); return () => ws.close() }, [])
+  useEffect(() => { loadAll(); const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`); ws.onopen = () => setLive('online'); ws.onclose = () => setLive('offline'); return () => ws.close() }, [])
   const chart = Object.entries(data?.status_counts || {}).map(([name, value]) => ({ name: name || 'Sem status', value }))
+  const nextRows = nextRun?.next_recharge_iccids || []
   return <section className="stack">
-    <div className="actionbar"><div className="tools"><button onClick={() => load().then(() => setToast('Dashboard atualizado'))}><RefreshCw size={16} /> Atualizar</button><button onClick={syncSubscribers}><Database size={16} /> Sincronizar assinantes</button></div><span className={`live ${live}`}>WebSocket {live}</span></div>
+    <div className="actionbar"><div className="tools"><button onClick={() => loadAll().then(() => setToast('Dashboard atualizado'))}><RefreshCw size={16} /> Atualizar</button><button onClick={syncSubscribers}><Database size={16} /> Sincronizar assinantes</button></div><span className={`live ${live}`}>WebSocket {live}</span></div>
     <div className="metrics">
       <Metric icon={Database} label="Total de ICCIDs" value={data?.total_iccids ?? '-'} />
       <Metric icon={Signal} label="Em uso" value={data?.status_counts?.['EM USO'] ?? 0} />
@@ -129,7 +135,10 @@ function Dashboard({ setToast }: { setToast: (s: string) => void }) {
       <Metric icon={XCircle} label="Cancelados" value={data?.status_counts?.CANCELADO ?? 0} />
       <Metric icon={Gauge} label="Proximas recargas" value={data?.actionable_iccids_count ?? 0} />
     </div>
-    <div className="grid two"><Panel title="Status dos ICCIDs"><ResponsiveContainer height={260}><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#2dd4bf" /></BarChart></ResponsiveContainer></Panel><Panel title="Ultimas Operacoes"><DataRows rows={data?.recent_operations || []} keys={['id', 'sim_card', 'status', 'trigger_type']} /></Panel></div>
+    <Panel title="ICCIDs da proxima recarga" tools={<span className="panel-note">{nextRun?.next_recharge_due_at ? `Data: ${format(nextRun.next_recharge_due_at)}` : 'Sem proxima data'}</span>}>
+      {nextRows.length ? <DataRows rows={nextRows} keys={['sim_card', 'cnpj', 'subscriber_name', 'contract_status', 'next_recharge_due_at']} /> : <Empty text="Nenhum ICCID elegivel encontrado para a proxima recarga." />}
+    </Panel>
+    <div className="grid two"><Panel title="Status dos ICCIDs"><ResponsiveContainer height={260}><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#a855f7" /></BarChart></ResponsiveContainer></Panel><Panel title="Ultimas Operacoes"><DataRows rows={data?.recent_operations || []} keys={['id', 'sim_card', 'status', 'trigger_type']} /></Panel></div>
     <Panel title="Alertas importantes">{(data?.important_alerts || []).length ? data.important_alerts.map((a: any, i: number) => <div className="alert" key={i}><AlertTriangle size={16} />{a.message}</div>) : <Empty text="Nenhum alerta importante." />}</Panel>
   </section>
 }
@@ -168,7 +177,7 @@ function Reports() {
   const [items, setItems] = useState<Operation[]>([])
   useEffect(() => { request<{ items: Operation[] }>('/operacoes?limit=500').then(r => setItems(r.items || [])) }, [])
   const trend = items.slice(0, 20).reverse().map(i => ({ name: `#${i.id}`, value: i.quantity || 0 }))
-  return <section className="stack"><Panel title="Dashboard analitico"><ResponsiveContainer height={260}><AreaChart data={trend}><XAxis dataKey="name" /><YAxis /><Tooltip /><Area dataKey="value" stroke="#38bdf8" fill="#0ea5e9" fillOpacity={0.2} /></AreaChart></ResponsiveContainer></Panel><Panel title="Relatorios por recarga" tools={<button onClick={() => exportCSV(items, 'relatorio-recargas.csv')}><FileDown size={16} /> CSV</button>}><DataRows rows={items} keys={['created_at', 'cnpj', 'sim_card', 'quantity', 'status', 'trigger_type', 'easy2use_user_message']} /></Panel></section>
+  return <section className="stack"><Panel title="Dashboard analitico"><ResponsiveContainer height={260}><AreaChart data={trend}><XAxis dataKey="name" /><YAxis /><Tooltip /><Area dataKey="value" stroke="#38bdf8" fill="#a855f7" fillOpacity={0.2} /></AreaChart></ResponsiveContainer></Panel><Panel title="Relatorios por recarga" tools={<button onClick={() => exportCSV(items, 'relatorio-recargas.csv')}><FileDown size={16} /> CSV</button>}><DataRows rows={items} keys={['created_at', 'cnpj', 'sim_card', 'quantity', 'status', 'trigger_type', 'easy2use_user_message']} /></Panel></section>
 }
 
 function Docs() {
@@ -178,8 +187,35 @@ function Docs() {
 
 function SettingsPage({ user, setToast }: { user: User; setToast: (s: string) => void }) {
   const [users, setUsers] = useState<User[]>([])
-  useEffect(() => { request<{ items: User[] }>('/api/users').then(r => setUsers(r.items || [])).catch(() => setUsers([])) }, [])
-  return <div className="grid two"><Panel title="Seguranca e sessao"><DataRows rows={[user]} keys={['email', 'role', 'active']} /><button onClick={() => setToast('Configuracoes salvas localmente')}>Salvar Configuracoes</button></Panel><Panel title="Usuarios e permissoes"><DataRows rows={users} keys={['name', 'email', 'role', 'active']} /></Panel></div>
+  const [form, setForm] = useState<UserForm>({ name: '', email: '', password: '', role: 'operator', active: true })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const loadUsers = () => request<{ items: User[] }>('/api/users').then(r => setUsers(r.items || [])).catch(() => setUsers([]))
+  useEffect(() => { loadUsers() }, [])
+  const createUser = async (e: FormEvent) => {
+    e.preventDefault(); setBusy(true); setError('')
+    try {
+      const data = await request<{ user: User }>('/api/users', { method: 'POST', body: JSON.stringify(form) })
+      setUsers((items) => [...items, data.user].sort((a, b) => a.name.localeCompare(b.name)))
+      setForm({ name: '', email: '', password: '', role: 'operator', active: true })
+      setToast(`Usuario criado: ${data.user.name} (${roleLabel(data.user.role)})`)
+    } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
+  }
+  return <div className="grid two">
+    <Panel title="Seguranca e sessao"><DataRows rows={[user]} keys={['email', 'role', 'active']} /><button onClick={() => setToast('Configuracoes salvas localmente')}>Salvar Configuracoes</button></Panel>
+    <Panel title="Novo usuario">
+      {user.role === 'admin' ? <form className="form" onSubmit={createUser}>
+        <label>Nome<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
+        <label>Email<input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></label>
+        <label>Senha inicial<input type="password" minLength={8} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required /></label>
+        <label>Tipo de usuario<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value as Role })}>{roleOptions.map(role => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+        <label className="check"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> Usuario ativo</label>
+        {error && <div className="error">{error}</div>}
+        <button disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <UserPlus size={16} />} Criar usuario</button>
+      </form> : <Empty text="Somente administradores podem criar novos usuarios." />}
+    </Panel>
+    <Panel title="Usuarios e permissoes"><DataRows rows={users} keys={['name', 'email', 'role', 'active']} /></Panel>
+  </div>
 }
 
 function Metric({ icon: Icon, label, value }: { icon: any; label: string; value: any }) { return <article className="metric"><Icon size={20} /><span>{label}</span><strong>{value}</strong></article> }
@@ -189,9 +225,9 @@ function SearchBox({ value, onChange }: any) { return <div className="search"><S
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div> }
 function FullLoader() { return <div className="login-screen"><Loader2 className="spin" /></div> }
 function format(v: any) { if (v === null || v === undefined || v === '') return '-'; if (typeof v === 'boolean') return v ? 'sim' : 'nao'; return String(v).slice(0, 80) }
+const roleOptions: Role[] = ['admin', 'supervisor', 'operator', 'viewer']
 function roleLabel(r: Role) { return ({ admin: 'Admin', supervisor: 'Supervisor', operator: 'Operador', viewer: 'Visualizacao' } as Record<Role, string>)[r] }
 function logout(setUser: (u: User | null) => void) { localStorage.removeItem('chipmov.accessToken'); localStorage.removeItem('chipmov.refreshToken'); setUser(null) }
 function exportCSV(rows: any[], filename: string) { const keys = Object.keys(rows[0] || {}); const csv = [keys.join(','), ...rows.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','))].join('\n'); const url = URL.createObjectURL(new Blob([csv])); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url) }
 
 export default App
-

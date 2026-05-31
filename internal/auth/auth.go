@@ -167,7 +167,6 @@ func HasPermission(role domain.UserRole, permission string) bool {
 			"approvals:write": true,
 			"reports:read":    true,
 			"users:read":      true,
-			"users:write":     true,
 			"iccids:read":     true,
 			"operations:read": true,
 			"audit:read":      true,
