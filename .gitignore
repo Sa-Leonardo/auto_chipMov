@@ -1,0 +1,11 @@
+.env
+.codex/
+.gocache/
+github.com/
+data/
+dist/
+*.exe
+*.db
+*.db-shm
+*.db-wal
+postgres-data/

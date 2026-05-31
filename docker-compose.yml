@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chipmov-postgres
+    environment:
+      POSTGRES_DB: chipmov
+      POSTGRES_USER: chipmov
+      POSTGRES_PASSWORD: chipmov
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - chipmov_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chipmov -d chipmov"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  chipmov_postgres_data:

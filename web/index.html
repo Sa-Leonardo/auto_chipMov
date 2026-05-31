@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>chip-MOV</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body>
+    <div class="app-frame">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">CM</div>
+          <div>
+            <strong>chip-MOV</strong>
+            <span>Recargas preventivas</span>
+          </div>
+        </div>
+        <nav class="side-nav" aria-label="Navegacao principal">
+          <a href="#dashboard">Dashboard</a>
+          <a href="#iccids-section">ICCIDs</a>
+          <a href="#manual-recharge-section">Recarga manual</a>
+          <a href="#approvals-section">Aprovacoes</a>
+          <a href="#operations-section">Operacoes</a>
+          <a href="/relatorios#reports-section">Relatorios</a>
+        </nav>
+      </aside>
+
+      <div class="content-frame">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Operacao interna</p>
+            <h1>Painel de recargas preventivas</h1>
+          </div>
+          <div class="auth-box">
+            <label for="adminKey">Chave interna</label>
+            <div class="auth-row">
+              <input id="adminKey" type="password" autocomplete="off" placeholder="x-api-key">
+              <button id="saveKeyBtn" type="button">Salvar</button>
+            </div>
+          </div>
+        </header>
+
+        <main class="shell">
+          <section class="toolbar" aria-label="Acoes principais">
+            <button id="refreshBtn" type="button">Atualizar</button>
+            <button id="syncSubscribersBtn" type="button" class="secondary">Sincronizar assinantes</button>
+            <button id="syncLastRechargeBtn" type="button" class="secondary">Sincronizar ultima recarga</button>
+            <button id="createApprovalsBtn" type="button">Criar pendencias</button>
+            <button id="dryRunBtn" type="button" class="secondary">Simular rotina</button>
+          </section>
+
+          <section id="statusMessage" class="status-message" hidden></section>
+
+          <section id="dashboard" class="metrics-grid">
+            <article class="metric">
+              <span>ICCIDs monitorados</span>
+              <strong id="metricTracked">-</strong>
+            </article>
+            <article class="metric">
+              <span>Pendencias</span>
+              <strong id="metricPending">-</strong>
+            </article>
+            <article class="metric">
+              <span>Vencidos hoje</span>
+              <strong id="metricDue">-</strong>
+            </article>
+            <article class="metric">
+              <span>Proxima recarga</span>
+              <strong id="metricNext">-</strong>
+            </article>
+          </section>
+
+          <section class="grid-two">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Resumo por CNPJ e status</h2>
+                  <p>Distribuicao local dos contratos sincronizados.</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>CNPJ</th>
+                      <th>Status</th>
+                      <th>Qtd.</th>
+                    </tr>
+                  </thead>
+                  <tbody id="summaryBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Proxima data</h2>
+                  <p>ICCIDs acionaveis na proxima janela.</p>
+                </div>
+              </div>
+              <div id="nextRunBox" class="next-box"></div>
+            </div>
+          </section>
+
+          <section id="manual-recharge-section" class="panel">
+            <div class="panel-head table-actions">
+              <div>
+                <h2>Adicionar saldo manual</h2>
+                <p>Informe um ICCID especifico e a quantidade de GB desejada.</p>
+              </div>
+            </div>
+            <form id="manualRechargeForm" class="manual-form">
+              <label>
+                ICCID
+                <input id="manualIccid" type="text" inputmode="numeric" placeholder="8955..." required>
+              </label>
+              <label>
+                Quantidade em GB
+                <input id="manualQuantity" type="number" min="1" step="1" value="1" required>
+              </label>
+              <label class="check-field">
+                <input id="manualDryRun" type="checkbox" checked>
+                Simular sem chamar a API real
+              </label>
+              <button id="manualRechargeBtn" type="submit">Adicionar saldo</button>
+            </form>
+          </section>
+
+          <section id="iccids-section" class="panel">
+            <div class="panel-head table-actions">
+              <div>
+                <h2>ICCIDs</h2>
+                <p>Base local sincronizada com a plataforma.</p>
+              </div>
+              <div class="filters">
+                <input id="iccidFilter" type="search" placeholder="Filtrar por ICCID, CNPJ ou status">
+                <select id="statusFilter">
+                  <option value="">Todos</option>
+                  <option value="EM USO">EM USO</option>
+                  <option value="BLOQUEADO">BLOQUEADO</option>
+                  <option value="CANCELADO">CANCELADO</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap tall">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ICCID</th>
+                    <th>CNPJ</th>
+                    <th>Telefone</th>
+                    <th>Status</th>
+                    <th>Ultima recarga</th>
+                    <th>Proxima recarga</th>
+                  </tr>
+                </thead>
+                <tbody id="iccidsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="grid-two">
+            <div id="approvals-section" class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Pendencias de aprovacao</h2>
+                  <p>Recargas aguardando acao manual.</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>ICCID</th>
+                      <th>CNPJ</th>
+                      <th>Qtd.</th>
+                      <th>Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="approvalsBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="operations-section" class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Operacoes recentes</h2>
+                  <p>Historico operacional mais recente.</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>ICCID</th>
+                      <th>Status</th>
+                      <th>Origem</th>
+                    </tr>
+                  </thead>
+                  <tbody id="operationsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section id="reports-section" class="panel">
+            <div class="panel-head table-actions">
+              <div>
+                <h2>Relatorios de recarga</h2>
+                <p>Historico consolidado das tentativas e recargas realizadas.</p>
+              </div>
+              <div class="filters">
+                <input id="reportFilter" type="search" placeholder="Filtrar por ICCID, empresa, CNPJ ou status">
+              </div>
+            </div>
+            <div class="table-wrap tall">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>ICCID</th>
+                    <th>Empresa / CNPJ</th>
+                    <th>GB</th>
+                    <th>Status</th>
+                    <th>Origem</th>
+                    <th>Mensagem</th>
+                  </tr>
+                </thead>
+                <tbody id="reportsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="confirmModal" class="modal-backdrop" hidden>
+      <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <div class="confirm-icon">!</div>
+        <div>
+          <h2 id="confirmTitle">Confirmar acao</h2>
+          <p id="confirmMessage"></p>
+        </div>
+        <div class="modal-actions">
+          <button id="confirmCancelBtn" type="button" class="secondary">Cancelar</button>
+          <button id="confirmOkBtn" type="button">Confirmar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
