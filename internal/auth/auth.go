@@ -165,6 +165,7 @@ func HasPermission(role domain.UserRole, permission string) bool {
 		},
 		domain.RoleSupervisor: {
 			"approvals:write": true,
+			"attendance:read": true,
 			"reports:read":    true,
 			"users:read":      true,
 			"iccids:read":     true,
@@ -173,12 +174,15 @@ func HasPermission(role domain.UserRole, permission string) bool {
 			"settings:read":   true,
 		},
 		domain.RoleOperator: {
-			"recharge:write":  true,
-			"iccids:read":     true,
-			"operations:read": true,
-			"approvals:read":  true,
+			"attendance:read":     true,
+			"attendance:recharge": true,
+			"recharge:write":      true,
+			"iccids:read":         true,
+			"operations:read":     true,
+			"approvals:read":      true,
 		},
 		domain.RoleViewer: {
+			"attendance:read": true,
 			"iccids:read":     true,
 			"operations:read": true,
 			"reports:read":    true,

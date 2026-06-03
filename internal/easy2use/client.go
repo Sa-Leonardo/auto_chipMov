@@ -37,10 +37,14 @@ type ListSubscribersResponse struct {
 }
 
 type Subscriber struct {
-	PersonType string     `json:"tipo_pessoa"`
-	Document   string     `json:"cpf_cnpj"`
-	Name       string     `json:"nome"`
-	Contracts  []Contract `json:"contratos"`
+	PersonType  string     `json:"tipo_pessoa"`
+	Document    string     `json:"cpf_cnpj"`
+	Name        string     `json:"nome"`
+	LegalName   string     `json:"razao_social"`
+	TradeName   string     `json:"nome_fantasia"`
+	ClientName  string     `json:"cliente_nome"`
+	CompanyName string     `json:"empresa"`
+	Contracts   []Contract `json:"contratos"`
 }
 
 type Contract struct {
@@ -62,6 +66,51 @@ type AddBalanceResponse struct {
 	Americanet    json.RawMessage `json:"americanet"`
 }
 
+type DataBalanceResponse struct {
+	Balance       float64 `json:"balance"`
+	StatusCodeTip any     `json:"codigo_status_tip"`
+}
+
+type DetailedConsumptionRequest struct {
+	Period        string `json:"periodo"`
+	Document      string `json:"cpf_cnpj,omitempty"`
+	ContractPhone string `json:"linha_contrato,omitempty"`
+}
+
+type DetailedConsumptionResponse struct {
+	StatusCodeTip any                           `json:"codigo_status_tip"`
+	Results       []DetailedConsumptionContract `json:"results"`
+}
+
+type DetailedConsumptionContract struct {
+	ContractNumber string             `json:"numero_contrato"`
+	SMS            []json.RawMessage  `json:"sms"`
+	Voice          []VoiceConsumption `json:"telefonia"`
+	Internet       []DataConsumption  `json:"internet"`
+	Period         string             `json:"periodo"`
+	ContractStatus string             `json:"contrato_status"`
+	SimCardStatus  string             `json:"simcard_status"`
+	PlanID         int64              `json:"id_plano"`
+	Plan           string             `json:"plano"`
+	ICCID          string             `json:"iccid"`
+	Line           string             `json:"linha"`
+	ClientDocument string             `json:"cliente_cnpj_cpf"`
+	ClientName     string             `json:"cliente_nome"`
+}
+
+type VoiceConsumption struct {
+	Date    string `json:"data"`
+	Seconds int    `json:"consumo_segundos"`
+	Minutes int    `json:"consumo_minutos"`
+}
+
+type DataConsumption struct {
+	Date     string  `json:"data"`
+	Upload   float64 `json:"consumo_upload"`
+	Download float64 `json:"consumo_download"`
+	Total    float64 `json:"consumo"`
+}
+
 func (c *Client) ListSubscribers(ctx context.Context) (ListSubscribersResponse, []byte, int, error) {
 	var out ListSubscribersResponse
 	body, statusCode, err := c.do(ctx, http.MethodGet, "/assinantes/listar", nil)
@@ -70,6 +119,34 @@ func (c *Client) ListSubscribers(ctx context.Context) (ListSubscribersResponse, 
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return out, body, statusCode, fmt.Errorf("decode subscribers response: %w", err)
+	}
+	return out, body, statusCode, nil
+}
+
+func (c *Client) DataBalance(ctx context.Context, simCardOrPhone string, realTime bool) (DataBalanceResponse, []byte, int, error) {
+	var out DataBalanceResponse
+	path := fmt.Sprintf("/saldo/%s/dados", url.PathEscape(simCardOrPhone))
+	if realTime {
+		path += "?real_time=true"
+	}
+	body, statusCode, err := c.do(ctx, http.MethodPost, path, nil)
+	if err != nil {
+		return out, body, statusCode, err
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return out, body, statusCode, fmt.Errorf("decode data balance response: %w", err)
+	}
+	return out, body, statusCode, nil
+}
+
+func (c *Client) DetailedConsumption(ctx context.Context, req DetailedConsumptionRequest) (DetailedConsumptionResponse, []byte, int, error) {
+	var out DetailedConsumptionResponse
+	body, statusCode, err := c.do(ctx, http.MethodPost, "/consumo-detalhado", req)
+	if err != nil {
+		return out, body, statusCode, err
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return out, body, statusCode, fmt.Errorf("decode detailed consumption response: %w", err)
 	}
 	return out, body, statusCode, nil
 }

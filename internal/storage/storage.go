@@ -383,6 +383,20 @@ func (s *Store) ListOperations(ctx context.Context, limit int) ([]domain.GBOpera
 	return ops, rows.Err()
 }
 
+func (s *Store) ListOperationsBySimCard(ctx context.Context, simCard string, limit int) ([]domain.GBOperation, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `select id, sim_card, coalesce(cnpj, ''), quantity, status, trigger_type, easy2use_status_code,
+		coalesce(easy2use_user_message, ''), coalesce(request_payload, ''), coalesce(response_payload, ''), coalesce(error_message, ''), created_at, finished_at
+		from gb_operations where sim_card = $1 order by id desc limit $2`, simCard, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanOperations(rows)
+}
+
 func (s *Store) CreateAutomationRun(ctx context.Context) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `insert into automation_runs (started_at, status) values ($1, 'running') returning id`, time.Now().UTC()).Scan(&id)
@@ -649,6 +663,36 @@ func (s *Store) ListAuditLogs(ctx context.Context, limit int) ([]domain.AuditLog
 	return items, rows.Err()
 }
 
+func (s *Store) ListAuditLogsFiltered(ctx context.Context, resource string, resourceID string, limit int) ([]domain.AuditLog, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	args := []any{}
+	query := `select id, user_id, action, resource, coalesce(resource_id, ''), coalesce(ip, ''),
+		coalesce(user_agent, ''), coalesce(metadata, ''), created_at
+		from audit_logs`
+	clauses := []string{}
+	if strings.TrimSpace(resource) != "" {
+		args = append(args, resource)
+		clauses = append(clauses, fmt.Sprintf("resource = $%d", len(args)))
+	}
+	if strings.TrimSpace(resourceID) != "" {
+		args = append(args, resourceID)
+		clauses = append(clauses, fmt.Sprintf("resource_id = $%d", len(args)))
+	}
+	if len(clauses) > 0 {
+		query += " where " + strings.Join(clauses, " and ")
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(" order by id desc limit $%d", len(args))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAuditLogs(rows)
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
@@ -698,6 +742,31 @@ func scanICCIDs(rows *sql.Rows) ([]domain.ICCID, error) {
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func scanOperations(rows *sql.Rows) ([]domain.GBOperation, error) {
+	ops := []domain.GBOperation{}
+	for rows.Next() {
+		var op domain.GBOperation
+		var code sql.NullInt64
+		var created, finished sql.NullTime
+		if err := rows.Scan(&op.ID, &op.SimCard, &op.CNPJ, &op.Quantity, &op.Status, &op.TriggerType, &code,
+			&op.Easy2UseUserMessage, &op.RequestPayload, &op.ResponsePayload, &op.ErrorMessage, &created, &finished); err != nil {
+			return nil, err
+		}
+		if code.Valid {
+			c := int(code.Int64)
+			op.Easy2UseStatusCode = &c
+		}
+		if created.Valid {
+			op.CreatedAt = created.Time
+		}
+		if finished.Valid {
+			op.FinishedAt = &finished.Time
+		}
+		ops = append(ops, op)
+	}
+	return ops, rows.Err()
 }
 
 func scanApproval(row scanner) (domain.RechargeApproval, error) {
@@ -775,6 +844,23 @@ func scanRefreshToken(row scanner) (domain.RefreshToken, error) {
 		item.RevokedAt = &revoked.Time
 	}
 	return item, nil
+}
+
+func scanAuditLogs(rows *sql.Rows) ([]domain.AuditLog, error) {
+	items := []domain.AuditLog{}
+	for rows.Next() {
+		var item domain.AuditLog
+		var userID sql.NullInt64
+		if err := rows.Scan(&item.ID, &userID, &item.Action, &item.Resource, &item.ResourceID, &item.IP, &item.UserAgent, &item.Metadata, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		if userID.Valid {
+			id := userID.Int64
+			item.UserID = &id
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func dateOnly(t time.Time) time.Time {
