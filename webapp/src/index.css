@@ -406,6 +406,249 @@ nav button:hover {
   grid-column: 1 / -1;
 }
 
+.inline-form {
+  grid-template-columns: minmax(150px, 220px) minmax(240px, 1fr) auto;
+  align-items: end;
+}
+
+.attendance-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  grid-template-areas:
+    "main side"
+    "audit audit";
+  gap: 16px;
+}
+
+.attendance-main {
+  display: grid;
+  grid-area: main;
+  gap: 16px;
+  min-width: 0;
+}
+
+.attendance-side {
+  grid-area: side;
+  min-width: 0;
+}
+
+.attendance-audit {
+  grid-area: audit;
+  min-width: 0;
+}
+
+.attendance-filters {
+  grid-template-columns: minmax(150px, 220px) minmax(180px, 240px);
+}
+
+.client-card,
+.result-card,
+.operation-card,
+.audit-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(13, 9, 24, 0.68);
+}
+
+.client-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.client-card div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.client-card span,
+.usage-summary span,
+.result-card span,
+.operation-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.client-card strong,
+.result-card strong,
+.operation-card strong {
+  overflow-wrap: anywhere;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpi-row .metric {
+  min-height: 104px;
+}
+
+.kpi-row .metric strong {
+  font-size: 22px;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.result-cards,
+.operation-list,
+.audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.result-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.result-card-main,
+.result-highlight,
+.operation-card,
+.audit-row summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-card-main > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.result-highlight {
+  justify-content: flex-start;
+}
+
+mark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: var(--radius);
+  padding: 0 9px;
+  color: #fff;
+  background: var(--panel-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-ok {
+  background: var(--ok-soft);
+  color: #a7f3d0;
+}
+
+.status-danger {
+  background: var(--danger-soft);
+  color: #fecdd3;
+}
+
+.status-warn {
+  background: var(--warn-soft);
+  color: #fde68a;
+}
+
+.status-info {
+  background: var(--info-soft);
+  color: #bae6fd;
+}
+
+.usage-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.usage-summary div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(29, 22, 51, 0.56);
+  padding: 12px;
+}
+
+.usage-summary strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.recharge-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(160px, 1fr);
+  align-items: end;
+  gap: 14px;
+}
+
+.operation-card {
+  align-items: flex-start;
+  padding: 12px;
+}
+
+.operation-card div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.operation-card small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.audit-row {
+  overflow: hidden;
+}
+
+.audit-row summary {
+  min-height: 48px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.audit-row summary::-webkit-details-marker {
+  display: none;
+}
+
+.audit-row summary span,
+.audit-row summary mark {
+  min-width: 0;
+}
+
+.audit-row summary button {
+  min-height: 34px;
+  padding: 0 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.audit-row pre {
+  max-width: 100%;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  background: rgba(11, 8, 19, 0.88);
+  color: #d8cfe4;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.alert.slim {
+  margin-bottom: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
 .table-wrap {
   max-height: 620px;
   overflow: auto;
@@ -622,6 +865,10 @@ tr:hover td {
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .usage-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 980px) {
@@ -651,8 +898,22 @@ tr:hover td {
   }
 
   .grid.two,
-  .metrics {
+  .metrics,
+  .attendance-layout,
+  .client-card,
+  .kpi-row,
+  .usage-summary,
+  .inline-form,
+  .attendance-filters,
+  .recharge-row {
     grid-template-columns: 1fr;
+  }
+
+  .attendance-layout {
+    grid-template-areas:
+      "main"
+      "side"
+      "audit";
   }
 
   .panel-head,
@@ -669,6 +930,13 @@ tr:hover td {
   .tools > *,
   .search {
     width: 100%;
+  }
+
+  .result-card-main,
+  .operation-card,
+  .audit-row summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

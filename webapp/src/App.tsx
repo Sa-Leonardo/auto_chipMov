@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import {
   Activity, AlertTriangle, BarChart3, BookOpen, CheckCircle2, Database, FileDown,
   Gauge, KeyRound, LayoutDashboard, ListChecks, Loader2, LogOut, RadioTower,
   RefreshCw, Search, Settings, ShieldCheck, Signal, Smartphone, UserPlus, XCircle,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -20,10 +21,20 @@ type Operation = { id: number; sim_card: string; cnpj: string; quantity: number;
 type Approval = { id: number; sim_card: string; cnpj: string; subscriber_name: string; status: string; quantity: number; reason: string; created_at: string }
 type NextRun = { today: string; next_recharge_due_at?: string | null; iccids_due_count: number; actionable_iccids_count: number; next_recharge_iccids: ICCID[] }
 type UserForm = { name: string; email: string; password: string; role: Role; active: boolean }
+type AuditLog = { id: number; user_id?: number; action: string; resource: string; resource_id?: string; metadata?: string; created_at: string }
+type AttendanceItem = { subscriber_name: string; cnpj: string; document: string; sim_card: string; phone_number: string; contract_number: string; contract_status: string; plan_name: string; recharge_allowed: boolean }
+type Availability = { available: boolean; message?: string; error?: string; value?: string | number; unit?: string; real_time?: boolean }
+type LastRecharge = { ultima_recarga?: string; LastRecharge?: string; error?: string }
+type ConsumptionSummary = { contracts: number; internet_total: number; upload_total: number; download_total: number; voice_seconds: number; voice_minutes: number; sms_count: number }
+type UsageHistory = { available: boolean; message?: string; error?: string; period: string; summary?: ConsumptionSummary; results?: object[] }
+type AttendanceDetail = { item: AttendanceItem; last_recharge: LastRecharge; balance: Availability; usage_history: UsageHistory; operations: Operation[]; audit: AuditLog[] }
+type DashboardAlert = { level: string; message: string }
+type DashboardSummary = { total_iccids: number; status_counts: Record<string, number>; pending_approvals: number; due_recharges: number; actionable_iccids_count: number; recent_operations: Operation[]; important_alerts: DashboardAlert[] }
 
 const API = import.meta.env.VITE_API_BASE_URL || ''
 const nav = [
   ['dashboard', 'Dashboard', LayoutDashboard],
+  ['attendance', 'Atendimento ICCID', Search],
   ['iccids', 'ICCIDs', Smartphone],
   ['manual', 'Recarga Manual', RadioTower],
   ['approvals', 'Aprovacoes', ListChecks],
@@ -79,6 +90,7 @@ function App() {
         </header>
         {toast && <div className="toast">{toast}</div>}
         {page === 'dashboard' && <Dashboard setToast={setToast} />}
+        {page === 'attendance' && <AttendanceICCID setToast={setToast} />}
         {page === 'iccids' && <ICCIDs />}
         {page === 'manual' && <ManualRecharge setToast={setToast} />}
         {page === 'approvals' && <Approvals setToast={setToast} />}
@@ -111,21 +123,22 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
 }
 
 function Dashboard({ setToast }: { setToast: (s: string) => void }) {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<DashboardSummary | null>(null)
   const [nextRun, setNextRun] = useState<NextRun | null>(null)
   const [live, setLive] = useState('desconectado')
-  const load = () => request('/api/dashboard/summary').then(setData)
+  const load = () => request<DashboardSummary>('/api/dashboard/summary').then(setData)
   const loadNextRun = () => request<NextRun>('/automation/next-run').then(setNextRun)
   const loadAll = () => Promise.all([load(), loadNextRun()])
   const syncSubscribers = async () => {
     setToast('Sincronizando assinantes...')
-    const result = await request<any>('/sync/assinantes', { method: 'POST' })
+    const result = await request<{ saved?: number }>('/sync/assinantes', { method: 'POST' })
     await loadAll()
     setToast(`Sincronizacao concluida: ${result.saved || 0} ICCIDs salvos`)
   }
   useEffect(() => { loadAll(); const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`); ws.onopen = () => setLive('online'); ws.onclose = () => setLive('offline'); return () => ws.close() }, [])
   const chart = Object.entries(data?.status_counts || {}).map(([name, value]) => ({ name: name || 'Sem status', value }))
   const nextRows = nextRun?.next_recharge_iccids || []
+  const alerts = data?.important_alerts || []
   return <section className="stack">
     <div className="actionbar"><div className="tools"><button onClick={() => loadAll().then(() => setToast('Dashboard atualizado'))}><RefreshCw size={16} /> Atualizar</button><button onClick={syncSubscribers}><Database size={16} /> Sincronizar assinantes</button></div><span className={`live ${live}`}>WebSocket {live}</span></div>
     <div className="metrics">
@@ -139,8 +152,180 @@ function Dashboard({ setToast }: { setToast: (s: string) => void }) {
       {nextRows.length ? <DataRows rows={nextRows} keys={['sim_card', 'cnpj', 'subscriber_name', 'contract_status', 'next_recharge_due_at']} /> : <Empty text="Nenhum ICCID elegivel encontrado para a proxima recarga." />}
     </Panel>
     <div className="grid two"><Panel title="Status dos ICCIDs"><ResponsiveContainer height={260}><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#a855f7" /></BarChart></ResponsiveContainer></Panel><Panel title="Ultimas Operacoes"><DataRows rows={data?.recent_operations || []} keys={['id', 'sim_card', 'status', 'trigger_type']} /></Panel></div>
-    <Panel title="Alertas importantes">{(data?.important_alerts || []).length ? data.important_alerts.map((a: any, i: number) => <div className="alert" key={i}><AlertTriangle size={16} />{a.message}</div>) : <Empty text="Nenhum alerta importante." />}</Panel>
+    <Panel title="Alertas importantes">{alerts.length ? alerts.map((a, i) => <div className="alert" key={i}><AlertTriangle size={16} />{a.message}</div>) : <Empty text="Nenhum alerta importante." />}</Panel>
   </section>
+}
+
+function AttendanceICCID({ setToast }: { setToast: (s: string) => void }) {
+  const [q, setQ] = useState('')
+  const [searchType, setSearchType] = useState('auto')
+  const [results, setResults] = useState<AttendanceItem[]>([])
+  const [detail, setDetail] = useState<AttendanceDetail | null>(null)
+  const [quantity, setQuantity] = useState(1)
+  const [note, setNote] = useState('')
+  const [dryRun, setDryRun] = useState(true)
+  const [period, setPeriod] = useState(currentMonth())
+  const [realTimeBalance, setRealTimeBalance] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const search = async (e?: FormEvent) => {
+    e?.preventDefault(); setBusy(true); setError(''); setDetail(null)
+    try {
+      const data = await request<{ items: AttendanceItem[] }>(`/api/attendance/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(searchType)}&period=${encodeURIComponent(period)}`)
+      setResults(data.items || [])
+      setToast(`${data.items?.length || 0} resultado(s) encontrado(s)`)
+    } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
+  }
+  const openDetail = async (simCard: string) => {
+    setBusy(true); setError('')
+    try {
+      const data = await request<AttendanceDetail>(`/api/attendance/iccids/${encodeURIComponent(simCard)}?period=${encodeURIComponent(period)}&real_time=${realTimeBalance ? 'true' : 'false'}`)
+      setDetail(data)
+      setQuantity(1); setNote(''); setDryRun(true)
+    } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
+  }
+  const recharge = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!detail) return
+    const simCard = detail.item.sim_card
+    if (!confirm(`${dryRun ? 'Simular' : 'Executar'} recarga avulsa de ${quantity}GB para ${simCard}?`)) return
+    setBusy(true); setError('')
+    try {
+      await request(`/api/attendance/iccids/${encodeURIComponent(simCard)}/recharge`, { method: 'POST', body: JSON.stringify({ quantity, dry_run: dryRun, note }) })
+      setToast('Recarga avulsa processada')
+      await openDetail(simCard)
+    } catch (err) { const message = (err as Error).message; setError(message); setToast(`Falha na recarga avulsa: ${message}`) } finally { setBusy(false) }
+  }
+  const item = detail?.item
+  const providerAlerts = detail ? [
+    detail.balance?.error || detail.balance?.message,
+    detail.usage_history?.error || detail.usage_history?.message,
+  ].filter(Boolean) : []
+  return <section className="stack">
+    <Panel title="Busca de cliente ou ICCID" tools={<span className="panel-note">ICCID, CPF/CNPJ ou nome</span>}>
+      <form className="form inline-form" onSubmit={search}>
+        <label>Tipo<select value={searchType} onChange={e => setSearchType(e.target.value)}><option value="auto">Automatico</option><option value="iccid">ICCID</option><option value="document">CPF/CNPJ</option><option value="name">Nome</option></select></label>
+        <label>Pesquisa<input value={q} onChange={e => setQ(e.target.value)} placeholder="Digite ICCID, documento ou nome" required /></label>
+        <button disabled={busy}>{busy ? <Loader2 className="spin" size={16} /> : <Search size={16} />} Consultar</button>
+      </form>
+      {error && <div className="error">{error}</div>}
+    </Panel>
+    {!item && <Panel title="Resultados"><AttendanceResultCards rows={results} onOpen={openDetail} /></Panel>}
+    {item && detail && <div className="attendance-layout">
+      <div className="attendance-main">
+        <Panel title="Ficha do cliente" tools={<button onClick={() => openDetail(item.sim_card)}><RefreshCw size={16} /> Atualizar</button>}>
+          <div className="stack compact">
+            {providerAlerts.map((message, index) => <div className="alert slim" key={index}><AlertTriangle size={15} /> {message}</div>)}
+            <div className="form inline-form attendance-filters">
+              <label>Periodo<input type="month" value={period} onChange={e => setPeriod(e.target.value)} /></label>
+              <label className="check"><input type="checkbox" checked={realTimeBalance} onChange={e => setRealTimeBalance(e.target.checked)} /> Saldo em tempo real</label>
+            </div>
+            <div className="client-card">
+              <div>
+                <span>Cliente</span>
+                <strong>{item.subscriber_name || '-'}</strong>
+                <small>{item.document || item.cnpj || '-'}</small>
+              </div>
+              <div>
+                <span>Telefone</span>
+                <strong>{item.phone_number || '-'}</strong>
+                <small>{item.plan_name || '-'}</small>
+              </div>
+              <div>
+                <span>ICCID</span>
+                <strong>{item.sim_card}</strong>
+                <small>Contrato {item.contract_number || '-'}</small>
+              </div>
+            </div>
+            <div className="kpi-row">
+              <Metric icon={Signal} label="Status" value={item.contract_status || '-'} />
+              <Metric icon={Database} label="Ultima recarga" value={detail.last_recharge?.ultima_recarga || detail.last_recharge?.LastRecharge || '-'} />
+              <Metric icon={Gauge} label="Saldo atual" value={detail.balance?.available ? `${detail.balance.value} GB` : 'Indisponivel'} />
+            </div>
+            <ConsumptionSummaryCard usage={detail.usage_history} />
+          </div>
+        </Panel>
+        <Panel title="Recarga avulsa">
+          <form className="form" onSubmit={recharge}>
+            <div className="recharge-row">
+              <label>Quantidade GB<input type="number" min={1} value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></label>
+              <label className="check"><input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} /> Simular</label>
+            </div>
+            <label>Motivo ou observacao<input value={note} onChange={e => setNote(e.target.value)} placeholder="Ex.: atendimento solicitado pelo cliente" /></label>
+            {!item.recharge_allowed && <div className="error">Este ICCID nao esta ativo para recarga: {item.contract_status}</div>}
+            <button disabled={busy || !item.recharge_allowed}><RadioTower size={16} /> Processar recarga</button>
+          </form>
+        </Panel>
+      </div>
+      <aside className="attendance-side">
+        <Panel title="Historico de recargas">
+          <OperationCards rows={detail.operations || []} />
+        </Panel>
+      </aside>
+      <div className="attendance-audit">
+        <Panel title="Auditoria de atendimento">
+          <AuditRows rows={detail.audit || []} />
+        </Panel>
+      </div>
+    </div>}
+  </section>
+}
+
+function AttendanceResultCards({ rows, onOpen }: { rows: AttendanceItem[]; onOpen: (simCard: string) => void }) {
+  if (!rows.length) return <Empty text="Nenhum registro encontrado." />
+  return <div className="result-cards">{rows.map((row) => <article className="result-card" key={row.sim_card}>
+    <div className="result-card-main">
+      <div>
+        <strong>{row.subscriber_name || 'Cliente sem nome'}</strong>
+        <span>{row.document || row.cnpj || '-'}</span>
+      </div>
+      <button onClick={() => onOpen(row.sim_card)}><Search size={16} /> Abrir</button>
+    </div>
+    <div className="result-highlight">
+      <span>{row.phone_number || '-'}</span>
+      <mark className={statusClass(row.contract_status)}>{row.contract_status || '-'}</mark>
+    </div>
+    <small>ICCID {row.sim_card}</small>
+    <small>{row.plan_name || 'Plano nao informado'}</small>
+  </article>)}</div>
+}
+
+function ConsumptionSummaryCard({ usage }: { usage: UsageHistory }) {
+  if (!usage?.available || !usage.summary) return <div className="alert slim"><AlertTriangle size={15} /> {usage?.message || usage?.error || 'Historico de uso indisponivel.'}</div>
+  const s = usage.summary
+  return <div className="usage-summary">
+    <div><span>Periodo</span><strong>{usage.period}</strong></div>
+    <div><span>Internet</span><strong>{formatNumber(s.internet_total)} MB</strong></div>
+    <div><span>Upload</span><strong>{formatNumber(s.upload_total)} MB</strong></div>
+    <div><span>Download</span><strong>{formatNumber(s.download_total)} MB</strong></div>
+    <div><span>Voz</span><strong>{s.voice_minutes} min</strong></div>
+    <div><span>SMS</span><strong>{s.sms_count}</strong></div>
+  </div>
+}
+
+function OperationCards({ rows }: { rows: Operation[] }) {
+  if (!rows.length) return <Empty text="Nenhuma recarga encontrada para este ICCID." />
+  return <div className="operation-list">{rows.map((op) => <article className="operation-card" key={op.id}>
+    <div>
+      <strong>#{op.id} · {op.quantity} GB</strong>
+      <span>{format(op.created_at)}</span>
+    </div>
+    <mark className={statusClass(op.status)}>{op.status}</mark>
+    {(op.easy2use_user_message || op.error_message) && <small>{op.easy2use_user_message || op.error_message}</small>}
+  </article>)}</div>
+}
+
+function AuditRows({ rows }: { rows: AuditLog[] }) {
+  if (!rows.length) return <Empty text="Nenhum evento de auditoria para este atendimento." />
+  return <div className="audit-list">{rows.map((row) => <details className="audit-row" key={row.id}>
+    <summary>
+      <span>#{row.id}</span>
+      <span>{format(row.created_at)}</span>
+      <mark className={statusClass(row.action)}>{row.action}</mark>
+      <button type="button">Ver detalhes</button>
+    </summary>
+    <pre>{formatAuditDetails(row)}</pre>
+  </details>)}</div>
 }
 
 function ICCIDs() {
@@ -153,9 +338,25 @@ function ICCIDs() {
 
 function ManualRecharge({ setToast }: { setToast: (s: string) => void }) {
   const [iccid, setIccid] = useState(''); const [quantity, setQuantity] = useState(1); const [dryRun, setDryRun] = useState(true); const [history, setHistory] = useState<Operation[]>([])
-  const submit = async (e: FormEvent) => { e.preventDefault(); if (!confirm(`${dryRun ? 'Simular' : 'Executar'} recarga para ${iccid}?`)) return; await request(`/iccids/${encodeURIComponent(iccid)}/saldo`, { method: 'POST', body: JSON.stringify({ quantity, dry_run: dryRun }) }); setToast('Operacao processada'); request<{ items: Operation[] }>('/operacoes?limit=20').then(r => setHistory(r.items || [])) }
-  useEffect(() => { request<{ items: Operation[] }>('/operacoes?limit=20').then(r => setHistory(r.items || [])) }, [])
-  return <div className="grid two"><Panel title="Recarga manual"><form className="form" onSubmit={submit}><label>ICCID<input value={iccid} onChange={e => setIccid(e.target.value)} required /></label><label>Quantidade GB<input type="number" min={1} value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></label><label className="check"><input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} /> Simular sem chamar API real</label><button><RadioTower size={16} /> Processar</button></form></Panel><Panel title="Historico de recargas manuais"><DataRows rows={history.filter(h => h.trigger_type === 'manual')} keys={['id', 'sim_card', 'quantity', 'status', 'created_at']} /></Panel></div>
+  const [error, setError] = useState('')
+  const loadHistory = () => request<{ items: Operation[] }>('/operacoes?limit=20').then(r => setHistory(r.items || []))
+  const submit = async (e: FormEvent) => {
+    e.preventDefault(); setError('')
+    const cleanICCID = iccid.trim()
+    if (!confirm(`${dryRun ? 'Simular' : 'Executar'} recarga para ${cleanICCID}?`)) return
+    try {
+      await request(`/iccids/${encodeURIComponent(cleanICCID)}/saldo`, { method: 'POST', body: JSON.stringify({ quantity, dry_run: dryRun }) })
+      setToast('Operacao processada')
+    } catch (err) {
+      const message = (err as Error).message
+      setError(message)
+      setToast(`Falha na recarga: ${message}`)
+    } finally {
+      loadHistory()
+    }
+  }
+  useEffect(() => { loadHistory() }, [])
+  return <div className="grid two"><Panel title="Recarga manual"><form className="form" onSubmit={submit}><label>ICCID<input value={iccid} onChange={e => setIccid(e.target.value)} required /></label><label>Quantidade GB<input type="number" min={1} value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></label><label className="check"><input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} /> Simular sem chamar API real</label>{error && <div className="error">{error}</div>}<button><RadioTower size={16} /> Processar</button></form></Panel><Panel title="Historico de recargas manuais"><DataRows rows={history.filter(h => h.trigger_type === 'manual')} keys={['id', 'sim_card', 'quantity', 'status', 'created_at', 'error_message', 'easy2use_user_message']} /></Panel></div>
 }
 
 function Approvals({ setToast }: { setToast: (s: string) => void }) {
@@ -218,16 +419,40 @@ function SettingsPage({ user, setToast }: { user: User; setToast: (s: string) =>
   </div>
 }
 
-function Metric({ icon: Icon, label, value }: { icon: any; label: string; value: any }) { return <article className="metric"><Icon size={20} /><span>{label}</span><strong>{value}</strong></article> }
-function Panel({ title, tools, children }: any) { return <section className="panel"><div className="panel-head"><h2>{title}</h2><div className="tools">{tools}</div></div>{children}</section> }
-function DataRows({ rows, keys, renderActions }: any) { if (!rows?.length) return <Empty text="Nenhum registro encontrado." />; return <div className="table-wrap"><table><thead><tr>{keys.map((k: string) => <th key={k}>{k}</th>)}{renderActions && <th>Acoes</th>}</tr></thead><tbody>{rows.map((r: any, i: number) => <tr key={r.id || i}>{keys.map((k: string) => <td key={k}>{format(r[k])}</td>)}{renderActions && <td className="row-actions">{renderActions(r)}</td>}</tr>)}</tbody></table></div> }
-function SearchBox({ value, onChange }: any) { return <div className="search"><Search size={16} /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Busca avancada" /></div> }
+function Metric({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: ReactNode }) { return <article className="metric"><Icon size={20} /><span>{label}</span><strong>{value}</strong></article> }
+function Panel({ title, tools, children }: { title: string; tools?: ReactNode; children: ReactNode }) { return <section className="panel"><div className="panel-head"><h2>{title}</h2><div className="tools">{tools}</div></div>{children}</section> }
+function DataRows<T extends object>({ rows, keys, renderActions }: { rows?: T[]; keys: string[]; renderActions?: (row: T) => ReactNode }) {
+  if (!rows?.length) return <Empty text="Nenhum registro encontrado." />
+  return <div className="table-wrap"><table><thead><tr>{keys.map((k) => <th key={k}>{k}</th>)}{renderActions && <th>Acoes</th>}</tr></thead><tbody>{rows.map((r, i) => {
+    const row = r as Record<string, unknown>
+    return <tr key={String(row.id || i)}>{keys.map((k) => <td key={k}>{format(row[k])}</td>)}{renderActions && <td className="row-actions">{renderActions(r)}</td>}</tr>
+  })}</tbody></table></div>
+}
+function SearchBox({ value, onChange }: { value: string; onChange: (value: string) => void }) { return <div className="search"><Search size={16} /><input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Busca avancada" /></div> }
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div> }
 function FullLoader() { return <div className="login-screen"><Loader2 className="spin" /></div> }
-function format(v: any) { if (v === null || v === undefined || v === '') return '-'; if (typeof v === 'boolean') return v ? 'sim' : 'nao'; return String(v).slice(0, 80) }
+function format(v: unknown) { if (v === null || v === undefined || v === '') return '-'; if (typeof v === 'boolean') return v ? 'sim' : 'nao'; return String(v).slice(0, 80) }
+function formatNumber(v: number) { return Number.isFinite(v) ? v.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '0' }
+function currentMonth() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}` }
+function statusClass(value: string) {
+  const clean = value.toLowerCase()
+  if (clean.includes('success') || clean.includes('em uso') || clean.includes('checked')) return 'status-ok'
+  if (clean.includes('failed') || clean.includes('erro') || clean.includes('cancelado') || clean.includes('blocked')) return 'status-danger'
+  if (clean.includes('pending') || clean.includes('dry') || clean.includes('bloqueado')) return 'status-warn'
+  return 'status-info'
+}
+function formatAuditDetails(row: AuditLog) {
+  let metadata: unknown
+  try {
+    metadata = row.metadata ? JSON.parse(row.metadata) : {}
+  } catch {
+    metadata = row.metadata || {}
+  }
+  return JSON.stringify({ ...row, metadata }, null, 2)
+}
 const roleOptions: Role[] = ['admin', 'supervisor', 'operator', 'viewer']
 function roleLabel(r: Role) { return ({ admin: 'Admin', supervisor: 'Supervisor', operator: 'Operador', viewer: 'Visualizacao' } as Record<Role, string>)[r] }
 function logout(setUser: (u: User | null) => void) { localStorage.removeItem('chipmov.accessToken'); localStorage.removeItem('chipmov.refreshToken'); setUser(null) }
-function exportCSV(rows: any[], filename: string) { const keys = Object.keys(rows[0] || {}); const csv = [keys.join(','), ...rows.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','))].join('\n'); const url = URL.createObjectURL(new Blob([csv])); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url) }
+function exportCSV(rows: object[], filename: string) { const keys = Object.keys(rows[0] || {}); const csv = [keys.join(','), ...rows.map(r => { const row = r as Record<string, unknown>; return keys.map(k => JSON.stringify(row[k] ?? '')).join(',') })].join('\n'); const url = URL.createObjectURL(new Blob([csv])); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url) }
 
 export default App
