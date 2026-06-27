@@ -1,4 +1,4 @@
-# Automacao chip-MOV
+# Automacao e gerenciamento de chip - MOV Telecom
 
 MVP em Go + Gin para adicionar 1 GB preventivo em ICCIDs vinculados a 2 CNPJs, usando a API Tip Brasil/Easy2Use.
 
